@@ -3,6 +3,8 @@ package com.airtribe.taskmanager;
 import com.airtribe.taskmanager.api.TaskApi;
 import com.airtribe.taskmanager.model.TaskQuery;
 import com.airtribe.taskmanager.model.TaskRequest;
+import com.airtribe.taskmanager.parser.HttpLlmClient;
+import com.airtribe.taskmanager.parser.LlmTaskParse;
 import com.airtribe.taskmanager.repository.InMemoryTaskRepository;
 import com.airtribe.taskmanager.service.TaskService;
 
@@ -15,19 +17,29 @@ public class App {
 
         var taskRepository = new InMemoryTaskRepository();
 
-        var taskService = new TaskService(taskRepository);
+        var llmApiKey = System.getenv("LLM_API_KEY");
+        var llmClient = new HttpLlmClient(llmApiKey, "deepseek", "deepseek-flash");
+        var taskParser = new LlmTaskParse(llmClient);
+        var taskService = new TaskService(taskRepository, taskParser);
 
-        var taskApi = new TaskApi(taskService, taskRepository);
+        var taskApi = new TaskApi(taskService, taskRepository, taskParser);
 
         try {
+            JsonMapper mapper = JsonMapper.builder().build();
+
             var taskRequest = new TaskRequest();
             taskRequest.setTitle("Buy milk");
             taskRequest.setDescription("2L cow milk");
             taskRequest.setPriority("HIGH");
             taskRequest.setDueDate("2026-11-21");
-            var response = taskApi.createTask(taskRequest, "");
 
-            JsonMapper mapper = JsonMapper.builder().build();
+            var createTaskFromTextApiResponse = taskApi.createTaskFromText("Buy milk from Guruprasad General Store",
+                    null);
+
+            System.out.println(
+                    "Create Task from Text --> " + mapper.writeValueAsString(createTaskFromTextApiResponse.getBody()));
+
+            var response = taskApi.createTask(taskRequest, "");
 
             String json = mapper.writeValueAsString(response);
             System.out.println("Created Task --> " + json);

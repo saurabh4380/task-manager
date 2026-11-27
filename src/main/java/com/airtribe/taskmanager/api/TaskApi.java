@@ -5,6 +5,7 @@ import com.airtribe.taskmanager.exception.ValidationException;
 import com.airtribe.taskmanager.model.ApiResponse;
 import com.airtribe.taskmanager.model.TaskQuery;
 import com.airtribe.taskmanager.model.TaskRequest;
+import com.airtribe.taskmanager.parser.TaskParser;
 import com.airtribe.taskmanager.repository.TaskRepository;
 import com.airtribe.taskmanager.service.TaskService;
 
@@ -12,8 +13,8 @@ public class TaskApi {
 
     private final TaskService taskService;
 
-    public TaskApi(TaskService taskService, TaskRepository taskRepository) {
-        this.taskService = new TaskService(taskRepository);
+    public TaskApi(TaskService taskService, TaskRepository taskRepository, TaskParser taskParser) {
+        this.taskService = new TaskService(taskRepository, taskParser);
     }
 
     public ApiResponse createTask(TaskRequest request, String idempotencyKey) {
@@ -71,6 +72,19 @@ public class TaskApi {
             return new ApiResponse(200, task);
 
         } catch (NotFoundException exception) {
+            return ErrorResponseFactory.from(exception);
+        } catch (Exception exception) {
+            return ErrorResponseFactory.fromUnexpected(exception);
+        }
+    }
+
+    public ApiResponse createTaskFromText(String text, String idempotencyKey) {
+
+        try {
+            var task = taskService.createTaskFromText(text, idempotencyKey);
+            return new ApiResponse(201, task);
+
+        } catch (ValidationException exception) {
             return ErrorResponseFactory.from(exception);
         } catch (Exception exception) {
             return ErrorResponseFactory.fromUnexpected(exception);
