@@ -1,5 +1,6 @@
 package com.airtribe.taskmanager.api;
 
+import com.airtribe.taskmanager.exception.ApiException;
 import com.airtribe.taskmanager.exception.NotFoundException;
 import com.airtribe.taskmanager.exception.ValidationException;
 import com.airtribe.taskmanager.model.ApiResponse;
@@ -14,7 +15,9 @@ public class TaskApi {
     private final TaskService taskService;
 
     public TaskApi(TaskService taskService, TaskRepository taskRepository, TaskParser taskParser) {
-        this.taskService = new TaskService(taskRepository, taskParser);
+        this.taskService = taskService != null
+                ? taskService
+                : new TaskService(taskRepository, taskParser);
     }
 
     public ApiResponse createTask(TaskRequest request, String idempotencyKey) {
@@ -23,7 +26,7 @@ public class TaskApi {
             var task = taskService.createTask(request, idempotencyKey);
             return new ApiResponse(201, task);
 
-        } catch (ValidationException exception) {
+        } catch (ApiException exception) {
             return ErrorResponseFactory.from(exception);
         } catch (Exception exception) {
             return ErrorResponseFactory.fromUnexpected(exception);
@@ -42,11 +45,37 @@ public class TaskApi {
         }
     }
 
+    public ApiResponse createSubtask(int parentId, TaskRequest request) {
+        try {
+            var task = taskService.createSubtask(parentId, request);
+            return new ApiResponse(201, task);
+
+        } catch (ApiException exception) {
+            return ErrorResponseFactory.from(exception);
+        } catch (Exception exception) {
+            return ErrorResponseFactory.fromUnexpected(exception);
+        }
+    }
+
+    public ApiResponse listSubtasks(int parentId) {
+        try {
+            var tasks = taskService.listSubtasks(parentId);
+            return new ApiResponse(200, tasks);
+
+        } catch (ApiException exception) {
+            return ErrorResponseFactory.from(exception);
+        } catch (Exception exception) {
+            return ErrorResponseFactory.fromUnexpected(exception);
+        }
+    }
+
     public ApiResponse listTasks(TaskQuery query) {
         try {
             var tasks = taskService.listTasks(query);
             return new ApiResponse(200, tasks);
 
+        } catch (ValidationException exception) {
+            return ErrorResponseFactory.from(exception);
         } catch (Exception exception) {
             return ErrorResponseFactory.fromUnexpected(exception);
         }
@@ -84,7 +113,20 @@ public class TaskApi {
             var task = taskService.createTaskFromText(text, idempotencyKey);
             return new ApiResponse(201, task);
 
-        } catch (ValidationException exception) {
+        } catch (ApiException exception) {
+            return ErrorResponseFactory.from(exception);
+        } catch (Exception exception) {
+            return ErrorResponseFactory.fromUnexpected(exception);
+        }
+    }
+
+    public ApiResponse breakDownTask(int id, String idempotencyKey) {
+
+        try {
+            var tasks = taskService.breakDownTask(id, idempotencyKey);
+            return new ApiResponse(200, tasks);
+
+        } catch (ApiException exception) {
             return ErrorResponseFactory.from(exception);
         } catch (Exception exception) {
             return ErrorResponseFactory.fromUnexpected(exception);

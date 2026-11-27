@@ -1,6 +1,7 @@
 package com.airtribe.taskmanager.api;
 
 import com.airtribe.taskmanager.exception.ApiException;
+import com.airtribe.taskmanager.exception.BadGatewayException;
 import com.airtribe.taskmanager.exception.ValidationException;
 import com.airtribe.taskmanager.model.ApiResponse;
 import com.airtribe.taskmanager.model.ErrorDto;
@@ -29,6 +30,9 @@ public class ErrorResponseFactory {
 
         if (apiException instanceof ValidationException valEx) {
             errorDto = new ErrorDto(valEx.getCode(), valEx.getMessage(), valEx.getIssues());
+        } else if (apiException instanceof BadGatewayException badGatewayException) {
+            errorDto = new ErrorDto(badGatewayException.getCode(), badGatewayException.getMessage(),
+                    badGatewayException.getIssues());
         }
 
         return errorDto;

@@ -8,7 +8,7 @@ public class TaskRequest {
     private boolean completed;
     private String dueDate;
     private String priority;
-    private Optional<Integer> parentTaskId;
+    private Optional<Integer> parentTaskId = Optional.empty();
 
     public Optional<Integer> getParentTaskId() {
         return parentTaskId;

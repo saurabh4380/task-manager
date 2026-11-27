@@ -93,8 +93,15 @@ public class Task {
             return this;
         }
 
+        public TaskBuilder setCreatedAt(long createdAt) {
+            this.createdAt = createdAt;
+            return this;
+        }
+
         public Task build() {
-            this.createdAt = System.currentTimeMillis();
+            if (this.createdAt == 0) {
+                this.createdAt = System.currentTimeMillis();
+            }
             return new Task(this);
         }
     }

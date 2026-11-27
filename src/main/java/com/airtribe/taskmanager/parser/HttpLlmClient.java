@@ -50,6 +50,8 @@ import tools.jackson.databind.node.ObjectNode;
 public class HttpLlmClient implements LlmClient {
 
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
+    private static final String RAW_SYSTEM_PROMPT = "Follow the user's instructions exactly. "
+            + "Reply with plain text only, with no markdown and no code fences.";
 
     private final String apiKey;
     private final String provider;
@@ -78,9 +80,18 @@ public class HttpLlmClient implements LlmClient {
 
     @Override
     public String send(String prompt) throws IOException {
+        return sendRequest(prompt, taskSystemPrompt(), true);
+    }
+
+    @Override
+    public String sendRaw(String prompt) throws IOException {
+        return sendRequest(prompt, RAW_SYSTEM_PROMPT, false);
+    }
+
+    private String sendRequest(String prompt, String systemPrompt, boolean jsonMode) throws IOException {
         HttpRequest request;
         try {
-            request = buildRequest(prompt);
+            request = buildRequest(prompt, systemPrompt, jsonMode);
         } catch (IllegalArgumentException e) {
             // e.g. a LLM_MODEL containing spaces makes the URL invalid
             throw new IOException("Invalid LLM configuration (check LLM_MODEL): " + e.getMessage(), e);
@@ -113,7 +124,7 @@ public class HttpLlmClient implements LlmClient {
         return reply;
     }
 
-    private HttpRequest buildRequest(String prompt) throws IOException {
+    private HttpRequest buildRequest(String prompt, String systemPrompt, boolean jsonMode) throws IOException {
         String quoted = SimpleJson.quote(prompt);
         HttpRequest.Builder b = HttpRequest.newBuilder().timeout(TIMEOUT)
                 .header("Content-Type", "application/json");
@@ -124,47 +135,45 @@ public class HttpLlmClient implements LlmClient {
                         .header("x-api-key", apiKey)
                         .header("anthropic-version", "2023-06-01")
                         .POST(HttpRequest.BodyPublishers.ofString(
-                                buildRequestBody(quoted)))
+                                buildRequestBody(quoted, systemPrompt, jsonMode)))
                         .build();
             case "openai":
+                String openAiMessages = jsonMode
+                        ? "[{\"role\":\"user\",\"content\":" + quoted + "}]"
+                        : "[{\"role\":\"user\",\"content\":"
+                                + SimpleJson.quote(systemPrompt + "\n\n" + prompt) + "}]";
                 return b.uri(URI.create(baseUrl + "/v1/chat/completions"))
                         .header("Authorization", "Bearer " + apiKey)
                         .POST(HttpRequest.BodyPublishers.ofString(
                                 "{\"model\":" + SimpleJson.quote(model)
-                                        + ",\"messages\":[{\"role\":\"user\",\"content\":" + quoted + "}]}"))
+                                        + ",\"messages\":" + openAiMessages + "}"))
                         .build();
             case "deepseek":
                 return b.uri(URI.create(baseUrl + "/chat/completions"))
                         .header("Authorization", "Bearer " + apiKey)
                         .POST(HttpRequest.BodyPublishers.ofString(
-                                buildRequestBody(quoted)))
+                                buildRequestBody(quoted, systemPrompt, jsonMode)))
                         .build();
             case "gemini":
+                String geminiText = jsonMode
+                        ? quoted
+                        : SimpleJson.quote(systemPrompt + "\n\n" + prompt);
                 return b.uri(URI.create(baseUrl + "/v1beta/models/" + model + ":generateContent"))
                         .header("x-goog-api-key", apiKey)
                         .POST(HttpRequest.BodyPublishers.ofString(
-                                "{\"contents\":[{\"parts\":[{\"text\":" + quoted + "}]}]}"))
+                                "{\"contents\":[{\"parts\":[{\"text\":" + geminiText + "}]}]}"))
                         .build();
             default:
                 throw new IOException("Unknown LLM_PROVIDER: " + provider + " (use anthropic, openai or gemini)");
         }
     }
 
-    private String buildRequestBody(String quoted) {
+    private String buildRequestBody(String quoted, String systemPrompt, boolean jsonMode) {
 
         // 2. A prompt that pins the output format and gives the model today's date.
         String today = DateHelper.today();
 
-        String systemPrompt = "Today's date is " + today + " (format YYYY-MM-DD).\n"
-                + "Turn the user's text into ONE task.\n"
-                + "Reply with ONLY a JSON object, no explanation, no code fences, with exactly these fields:\n"
-                + "If you cannot determine the dueDate from the text then set it as today's date.\n"
-                + "  \"title\": short string, required\n"
-                + "  \"description\": string, required\n"
-                + "  \"dueDate\": YYYY-MM-DD or null\n"
-                + "  \"recurrence\": string such as \"monthly\", or null\n";
-
-        String userInput = quoted;
+        String prompt = systemPrompt.replace("{{today}}", today);
 
         // Build request payload safely with Jackson
         ObjectNode payload = mapper.createObjectNode();
@@ -175,18 +184,31 @@ public class HttpLlmClient implements LlmClient {
         // Disable thinking mode to minimize token usage
         payload.putObject("thinking").put("type", "disabled");
 
-        // Enforce JSON output
-        payload.putObject("response_format").put("type", "json_object");
+        if (jsonMode) {
+            // Enforce JSON output
+            payload.putObject("response_format").put("type", "json_object");
+        }
 
         ArrayNode messages = payload.putArray("messages");
         messages.addObject()
                 .put("role", "system")
-                .put("content", systemPrompt);
+                .put("content", prompt);
         messages.addObject()
                 .put("role", "user")
-                .put("content", userInput);
+                .put("content", quoted);
 
         return mapper.writeValueAsString(payload);
+    }
+
+    private static String taskSystemPrompt() {
+        return "Today's date is {{today}} (format YYYY-MM-DD).\n"
+                + "Turn the user's text into ONE task.\n"
+                + "Reply with ONLY a JSON object, no explanation, no code fences, with exactly these fields:\n"
+                + "If you cannot determine the dueDate from the text then set it as today's date.\n"
+                + "  \"title\": short string, required\n"
+                + "  \"description\": string, required\n"
+                + "  \"dueDate\": YYYY-MM-DD or null\n"
+                + "  \"recurrence\": string such as \"monthly\", or null\n";
     }
 
     private static String defaultBaseUrl(String provider) {

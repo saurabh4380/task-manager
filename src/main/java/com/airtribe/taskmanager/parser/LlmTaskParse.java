@@ -24,4 +24,8 @@ public class LlmTaskParse implements TaskParser {
         return parsedtask;
     }
 
+    public LlmClient getLlmClient() {
+        return llmClient;
+    }
+
 }
